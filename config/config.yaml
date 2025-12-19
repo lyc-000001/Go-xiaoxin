@@ -3,7 +3,7 @@ app:
   name: "Blog Backend"
   version: "1.0.0"
   mode: "debug" # debug, release, test
-  port: 8080
+  port: 8081
   read_timeout: 60
   write_timeout: 60
 
@@ -11,8 +11,8 @@ app:
 database:
   host: "127.0.0.1"
   port: 3306
-  username: "root"
-  password: "123456"
+  username: "Go-xiaoxin"
+  password: "xiaoxin666"
   dbname: "blog_db"
   charset: "utf8mb4"
   parse_time: true
