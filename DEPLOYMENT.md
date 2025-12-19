@@ -1,441 +1,429 @@
 # Docker 部署指南
 
-本文档介绍如何使用 Docker 将博客后台系统部署到远程服务器。
+本文档介绍如何使用 Docker 将博客后台系统部署到远程服务器(适用于宝塔面板)。
+
+## 部署架构
+
+- **Go 应用**: Docker 容器运行
+- **MySQL**: 宝塔面板直接安装
+- **Redis**: 宝塔面板直接安装
 
 ## 准备工作
 
-### 本地环境要求
-- Docker 20.10+
-- Docker Compose 2.0+
-
-### 远程服务器要求
+### 服务器要求
 - Linux 服务器 (Ubuntu 20.04+, CentOS 7+, Debian 10+ 等)
-- Docker 和 Docker Compose 已安装
-- 开放端口: 8080 (应用), 3306 (MySQL, 可选), 6379 (Redis, 可选)
+- 已安装宝塔面板
+- 开放端口: 8080 (应用端口)
 
-## 一、本地测试部署
+## 一、宝塔面板部署步骤
 
-在部署到远程服务器前,建议先在本地测试。
+### 1. 安装必要软件
 
-### 1. 修改配置文件
+在宝塔面板的软件商店安装:
+- **MySQL 8.0**
+- **Redis**
+- **Docker**
 
-编辑 `config/config.yaml`,修改以下配置以适配 Docker 环境:
+### 2. 创建数据库
 
-```yaml
-app:
-  mode: "release"  # 改为 release
-  port: 8080       # 改为 8080
-
-database:
-  host: "mysql"        # 改为 mysql (Docker 服务名)
-  username: "blog_user"    # 改为 blog_user
-  password: "blog123456"   # 与 docker-compose.yml 中的密码一致
-
-redis:
-  host: "redis"    # 改为 redis (Docker 服务名)
-
-jwt:
-  secret: "CHANGE_THIS_TO_A_STRONG_SECRET"  # 修改为强密码
+在宝塔面板 → 数据库:
+```sql
+数据库名: blog_db
+用户名: blog_user
+密码: 设置一个强密码
+字符集: utf8mb4
 ```
 
-### 2. 修改敏感信息
+### 3. 上传项目
 
-编辑 `docker-compose.yml`,修改以下密码:
-```yaml
-MYSQL_ROOT_PASSWORD: your_strong_password
-MYSQL_PASSWORD: your_strong_password
-```
+方式1: 使用宝塔文件管理器上传
 
-同时更新 `config/config.yaml` 中的 `database.password`。
-
-### 3. 构建并启动
-
+方式2: 使用命令行
 ```bash
-# 构建并启动所有服务
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
-
-# 查看服务状态
-docker-compose ps
-```
-
-### 4. 验证部署
-
-```bash
-# 检查应用是否正常运行
-curl http://localhost:8080/api/v1/ping
-
-# 或在浏览器访问
-# http://localhost:8080
-```
-
-## 二、远程服务器部署
-
-### 方法 1: 上传源码构建(推荐)
-
-#### 1. 安装 Docker 和 Docker Compose
-
-Ubuntu/Debian:
-```bash
-# 更新包索引
-sudo apt-get update
-
-# 安装 Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-
-# 启动 Docker
-sudo systemctl start docker
-sudo systemctl enable docker
-
-# 安装 Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# 验证安装
-docker --version
-docker-compose --version
-```
-
-CentOS/RHEL:
-```bash
-# 安装 Docker
-sudo yum install -y yum-utils
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo yum install -y docker-ce docker-ce-cli containerd.io
-
-# 启动 Docker
-sudo systemctl start docker
-sudo systemctl enable docker
-
-# 安装 Docker Compose (同上)
-```
-
-#### 2. 上传项目到服务器
-
-```bash
-# 在本地打包项目
+# 本地打包
 tar -czf blog-backend.tar.gz --exclude='.git' --exclude='logs' --exclude='uploads' .
 
-# 上传到服务器
-scp blog-backend.tar.gz user@your-server-ip:/home/user/
+# 上传到服务器 (假设路径为 /www/wwwroot/blog-backend)
+scp blog-backend.tar.gz root@your-server-ip:/www/wwwroot/
 
-# 或使用 rsync (推荐)
-rsync -avz --exclude='.git' --exclude='logs' --exclude='uploads' ./ user@your-server-ip:/home/user/blog-backend/
+# 服务器上解压
+ssh root@your-server-ip
+cd /www/wwwroot
+tar -xzf blog-backend.tar.gz
+mv blog-backend blog-backend-dir  # 重命名
 ```
 
-#### 3. 在服务器上部署
+### 4. 修改配置文件
 
-```bash
-# SSH 登录服务器
-ssh user@your-server-ip
+编辑 `config/config.yaml`:
+```yaml
+app:
+  mode: "release"
+  port: 8080
 
-# 解压项目 (如果使用 tar)
-tar -xzf blog-backend.tar.gz -C /home/user/blog-backend
-cd /home/user/blog-backend
+database:
+  host: "127.0.0.1"      # 使用宿主机的 MySQL
+  username: "blog_user"
+  password: "你的数据库密码"
+  dbname: "blog_db"
 
-# 修改配置
-cp config/config.docker.yaml config/config.yaml
-vim config/config.yaml  # 修改 JWT secret 等敏感信息
-vim docker-compose.yml  # 修改数据库密码
+redis:
+  host: "127.0.0.1"      # 使用宿主机的 Redis
+  port: 6379
 
-# 构建并启动
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f app
+jwt:
+  secret: "修改为强密码"
 ```
 
-### 方法 2: 使用预构建镜像
+### 5. 构建 Docker 镜像
 
-如果你有 Docker 镜像仓库(如 Docker Hub, 阿里云容器镜像服务):
-
-#### 1. 本地构建并推送镜像
-
+在宝塔终端或 SSH 中执行:
 ```bash
+cd /www/wwwroot/blog-backend
+
 # 构建镜像
-docker build -t your-registry/blog-backend:latest .
+docker build -t blog-backend:latest .
 
-# 推送到仓库
-docker push your-registry/blog-backend:latest
+# 查看镜像
+docker images | grep blog-backend
 ```
 
-#### 2. 修改 docker-compose.yml
+### 6. 运行容器
 
-```yaml
-services:
-  app:
-    image: your-registry/blog-backend:latest  # 使用远程镜像
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
+使用 `--network host` 模式(推荐,容器直接使用宿主机网络):
+```bash
+docker run -d \
+  --name blog-backend \
+  --network host \
+  --restart always \
+  -v /www/wwwroot/blog-backend/uploads:/app/uploads \
+  -v /www/wwwroot/blog-backend/logs:/app/logs \
+  -v /www/wwwroot/blog-backend/config:/app/config:ro \
+  blog-backend:latest
 ```
 
-#### 3. 在服务器上拉取并运行
+或使用端口映射:
+```bash
+docker run -d \
+  --name blog-backend \
+  -p 8080:8080 \
+  --restart always \
+  --add-host host.docker.internal:host-gateway \
+  -v /www/wwwroot/blog-backend/uploads:/app/uploads \
+  -v /www/wwwroot/blog-backend/logs:/app/logs \
+  -v /www/wwwroot/blog-backend/config:/app/config:ro \
+  blog-backend:latest
+```
+
+### 7. 配置防火墙
+
+在宝塔面板 → 安全 → 防火墙 → 添加规则:
+- 端口: `8080`
+- 协议: `TCP`
+- 说明: `博客后台`
+
+### 8. 验证部署
 
 ```bash
-# 只需要 docker-compose.yml 和 config 目录
-ssh user@your-server-ip
-mkdir -p blog-backend && cd blog-backend
-
-# 上传 docker-compose.yml 和 config 目录
-# 然后启动
-docker-compose pull
-docker-compose up -d
-```
-
-## 三、配置说明
-
-### 端口映射
-
-如果服务器端口被占用,可以修改 `docker-compose.yml` 中的端口映射:
-
-```yaml
-services:
-  app:
-    ports:
-      - "9000:8080"  # 将 8080 改为 9000
-
-  mysql:
-    ports:
-      - "13306:3306"  # 避免与宿主机 MySQL 冲突
-```
-
-### 数据持久化
-
-数据卷确保数据不会丢失:
-- `mysql-data`: MySQL 数据
-- `redis-data`: Redis 数据
-- `./uploads`: 上传的文件
-- `./logs`: 应用日志
-
-### 环境变量
-
-可以通过环境变量覆盖配置:
-
-```yaml
-services:
-  app:
-    environment:
-      - GIN_MODE=release
-      - DB_HOST=mysql
-      - DB_PASSWORD=your_password
-```
-
-需要修改代码以支持环境变量配置。
-
-## 四、常用命令
-
-```bash
-# 启动服务
-docker-compose up -d
-
-# 停止服务
-docker-compose down
-
-# 重启服务
-docker-compose restart
-
-# 重启单个服务
-docker-compose restart app
+# 查看容器状态
+docker ps | grep blog-backend
 
 # 查看日志
-docker-compose logs -f
-docker-compose logs -f app     # 只看应用日志
-docker-compose logs -f mysql   # 只看 MySQL 日志
+docker logs -f blog-backend
 
-# 查看服务状态
-docker-compose ps
+# 测试接口
+curl http://localhost:8080/api/v1/ping
+```
+
+或在浏览器访问: `http://your-server-ip:8080`
+
+## 二、常用命令
+
+### 容器管理
+```bash
+# 查看运行中的容器
+docker ps
+
+# 启动容器
+docker start blog-backend
+
+# 停止容器
+docker stop blog-backend
+
+# 重启容器
+docker restart blog-backend
+
+# 删除容器
+docker rm -f blog-backend
+
+# 查看日志
+docker logs -f blog-backend
+docker logs --tail 100 blog-backend  # 查看最后100行
 
 # 进入容器
-docker-compose exec app sh
-docker-compose exec mysql bash
+docker exec -it blog-backend sh
+```
 
-# 更新代码后重新构建
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+### 更新应用
+```bash
+# 停止并删除旧容器
+docker stop blog-backend
+docker rm blog-backend
 
-# 清理无用的镜像和容器
+# 重新构建镜像
+cd /www/wwwroot/blog-backend
+docker build -t blog-backend:latest .
+
+# 启动新容器
+docker run -d \
+  --name blog-backend \
+  --network host \
+  --restart always \
+  -v /www/wwwroot/blog-backend/uploads:/app/uploads \
+  -v /www/wwwroot/blog-backend/logs:/app/logs \
+  -v /www/wwwroot/blog-backend/config:/app/config:ro \
+  blog-backend:latest
+```
+
+### 清理资源
+```bash
+# 清理未使用的镜像
+docker image prune -a
+
+# 清理所有未使用的资源
 docker system prune -a
+
+# 查看磁盘使用
+docker system df
 ```
 
-## 五、数据库初始化
+## 三、SSL/HTTPS 配置(使用宝塔)
 
-首次部署后,需要创建表结构:
+### 1. 在宝塔创建网站
 
-### 方法 1: 自动迁移 (推荐)
+宝塔面板 → 网站 → 添加站点:
+- 域名: `your-domain.com`
+- 根目录: 任意(不使用)
+- PHP版本: 纯静态
 
-应用启动时会自动创建表(如果代码中有 AutoMigrate)。
+### 2. 配置反向代理
 
-### 方法 2: 手动执行 SQL
-
-```bash
-# 创建初始化 SQL 文件
-vim init.sql
-
-# 进入 MySQL 容器执行
-docker-compose exec mysql mysql -ublog_user -pblog123456 blog_db < init.sql
-
-# 或直接进入容器
-docker-compose exec mysql mysql -ublog_user -pblog123456 blog_db
-```
-
-## 六、SSL/HTTPS 配置
-
-### 使用 Nginx 反向代理 (推荐)
-
-```bash
-# 安装 Nginx
-sudo apt-get install nginx
-
-# 配置 Nginx
-sudo vim /etc/nginx/sites-available/blog-backend
-```
-
-Nginx 配置示例:
+进入网站设置 → 反向代理 → 添加反向代理:
+- 代理名称: `博客后台`
+- 目标URL: `http://127.0.0.1:8080`
+- 发送域名: `$host`
+- 配置内容:
 ```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://localhost:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 
-使用 Let's Encrypt 配置 HTTPS:
-```bash
-# 安装 Certbot
-sudo apt-get install certbot python3-certbot-nginx
+### 3. 申请 SSL 证书
 
-# 获取证书并自动配置 Nginx
-sudo certbot --nginx -d your-domain.com
+网站设置 → SSL → Let's Encrypt:
+- 点击"申请"
+- 勾选"强制HTTPS"
 
-# 自动续期
-sudo certbot renew --dry-run
-```
+现在可以通过 `https://your-domain.com` 访问了!
 
-## 七、监控和维护
+## 四、监控和维护
 
 ### 查看资源使用
 
 ```bash
 # 查看容器资源使用
-docker stats
+docker stats blog-backend
 
 # 查看磁盘使用
 df -h
-du -sh logs/
-du -sh uploads/
+du -sh /www/wwwroot/blog-backend/logs
+du -sh /www/wwwroot/blog-backend/uploads
 ```
 
 ### 日志管理
 
 ```bash
-# 清理旧日志 (应用日志已配置自动清理)
-# 清理 Docker 日志
-sudo truncate -s 0 /var/lib/docker/containers/*/*-json.log
+# 应用日志(自动管理,配置在 config.yaml 中)
+tail -f /www/wwwroot/blog-backend/logs/app.log
+
+# Docker 容器日志
+docker logs --tail 200 blog-backend
+
+# 清理 Docker 日志(如果过大)
+truncate -s 0 $(docker inspect --format='{{.LogPath}}' blog-backend)
 ```
 
 ### 数据备份
 
 ```bash
 # 备份 MySQL 数据
-docker-compose exec mysql mysqldump -ublog_user -pblog123456 blog_db > backup_$(date +%Y%m%d).sql
+mysqldump -ublog_user -p blog_db > backup_$(date +%Y%m%d).sql
+
+# 或使用宝塔面板:数据库 → 备份
 
 # 备份上传文件
-tar -czf uploads_backup_$(date +%Y%m%d).tar.gz uploads/
+tar -czf uploads_backup_$(date +%Y%m%d).tar.gz /www/wwwroot/blog-backend/uploads/
 
 # 恢复数据库
-docker-compose exec -T mysql mysql -ublog_user -pblog123456 blog_db < backup_20240101.sql
+mysql -ublog_user -p blog_db < backup_20240101.sql
 ```
 
-## 八、故障排查
+## 五、故障排查
 
 ### 应用无法启动
 
 ```bash
-# 查看详细日志
-docker-compose logs -f app
+# 查看容器日志
+docker logs blog-backend
 
 # 常见问题:
-# 1. 数据库连接失败 -> 检查 config.yaml 配置
-# 2. 端口被占用 -> 修改 docker-compose.yml 端口映射
-# 3. 权限问题 -> 检查 uploads 和 logs 目录权限
+# 1. 数据库连接失败 -> 检查 config.yaml 和数据库配置
+# 2. 端口被占用 -> 检查 8080 端口: netstat -tulnp | grep 8080
+# 3. 权限问题 -> 检查 uploads 和 logs 目录权限: chmod 755
 ```
 
 ### 数据库连接失败
 
 ```bash
-# 检查 MySQL 是否正常
-docker-compose ps
-docker-compose logs mysql
+# 检查 MySQL 是否运行
+systemctl status mysql
+# 或在宝塔面板检查 MySQL 状态
 
 # 测试连接
-docker-compose exec mysql mysql -ublog_user -pblog123456 -e "SELECT 1"
+mysql -ublog_user -p -e "SELECT 1"
 
-# 检查网络
-docker-compose exec app ping mysql
+# 检查防火墙(如果容器用端口映射模式)
+iptables -L | grep 3306
 ```
 
 ### Redis 连接失败
 
 ```bash
 # 检查 Redis 状态
-docker-compose exec redis redis-cli ping
+redis-cli ping
+# 或在宝塔面板检查 Redis 状态
 
-# 查看 Redis 日志
-docker-compose logs redis
+# 如果使用密码
+redis-cli -a your_password ping
 ```
 
-## 九、安全建议
+### 容器网络问题
 
-1. **修改默认密码**: 务必修改 docker-compose.yml 中的数据库密码
-2. **修改 JWT Secret**: 修改 config.yaml 中的 jwt.secret
-3. **配置防火墙**: 只开放必要的端口 (80, 443, 8080)
-4. **使用非 root 用户**: 运行 Docker 容器
-5. **定期更新**: 定期更新基础镜像和依赖
-6. **备份数据**: 定期备份数据库和上传文件
-7. **使用 HTTPS**: 生产环境务必配置 SSL 证书
+如果使用 `--network host` 模式但无法连接数据库:
+```bash
+# 检查 MySQL 是否监听 127.0.0.1
+netstat -tulnp | grep 3306
 
-## 十、性能优化
-
-### 1. 数据库优化
-
-```yaml
-# 调整 MySQL 配置
-services:
-  mysql:
-    command:
-      - --max_connections=500
-      - --innodb_buffer_pool_size=1G
+# 如果只监听 localhost,需要配置 MySQL 允许本地连接
+# 编辑 /etc/mysql/mysql.conf.d/mysqld.cnf
+bind-address = 127.0.0.1
 ```
 
-### 2. 应用优化
+如果使用端口映射模式:
+```bash
+# 确保容器可以访问宿主机
+docker exec -it blog-backend ping host.docker.internal
+
+# 如果不通,尝试使用宿主机 IP
+ip addr show docker0  # 查看 docker0 的 IP
+# 在 config.yaml 中使用这个 IP (通常是 172.17.0.1)
+```
+
+## 六、安全建议
+
+1. **修改默认密码**: 数据库密码和 JWT Secret
+2. **配置防火墙**: 只开放必要的端口 (80, 443)
+3. **使用 HTTPS**: 配置 SSL 证书
+4. **定期更新**: 更新系统和 Docker 镜像
+5. **定期备份**: 备份数据库和上传文件
+6. **限制访问**: 数据库只允许本地访问
+7. **日志监控**: 定期检查应用日志
+
+## 七、性能优化
+
+### 数据库优化
+
+在宝塔面板 → 数据库 → 性能调整:
+- 调整 `max_connections`
+- 调整 `innodb_buffer_pool_size`
+
+或编辑 MySQL 配置文件。
+
+### 应用优化
 
 在 `config/config.yaml` 中调整:
 ```yaml
 database:
   max_idle_conns: 20
   max_open_conns: 200
+  conn_max_lifetime: 3600
 ```
 
-### 3. Redis 优化
+### Redis 优化
 
-```yaml
-services:
-  redis:
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+在宝塔面板 → Redis → 配置修改:
 ```
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+```
+
+## 常见问题 FAQ
+
+### 1. 如何更新代码?
+
+```bash
+# 上传新代码到服务器
+# 然后执行:
+cd /www/wwwroot/blog-backend
+docker stop blog-backend
+docker rm blog-backend
+docker build -t blog-backend:latest .
+docker run -d --name blog-backend --network host --restart always \
+  -v /www/wwwroot/blog-backend/uploads:/app/uploads \
+  -v /www/wwwroot/blog-backend/logs:/app/logs \
+  -v /www/wwwroot/blog-backend/config:/app/config:ro \
+  blog-backend:latest
+```
+
+### 2. 如何查看实时日志?
+
+```bash
+docker logs -f blog-backend
+# 或
+tail -f /www/wwwroot/blog-backend/logs/app.log
+```
+
+### 3. 如何修改配置?
+
+```bash
+# 修改配置文件
+vim /www/wwwroot/blog-backend/config/config.yaml
+
+# 重启容器生效
+docker restart blog-backend
+```
+
+### 4. 容器自动重启吗?
+
+使用了 `--restart always` 参数,容器会在:
+- Docker 重启后自动启动
+- 容器异常退出后自动重启
+- 服务器重启后自动启动
+
+### 5. 如何绑定多个域名?
+
+在宝塔面板网站设置中添加多个域名即可,反向代理配置保持不变。
 
 ## 支持
 
-如有问题,请提交 Issue 或查看应用日志进行排查。
+如有问题,请查看:
+- 应用日志: `/www/wwwroot/blog-backend/logs/app.log`
+- 容器日志: `docker logs blog-backend`
+- 宝塔面板的错误日志
+
+或提交 Issue 获取帮助。
